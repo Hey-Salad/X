@@ -1,0 +1,27 @@
+{
+  "name": "heysalad-mcp",
+  "version": "1.0.0",
+  "description": "Model Context Protocol server exposing HeySalad operational data and tools",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "NODE_ENV=development node src/server.js",
+    "test": "node --test || echo \"No test suite defined\""
+  },
+  "keywords": [
+    "mcp",
+    "heysalad",
+    "cloudflare"
+  ],
+  "author": "HeySalad",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "zod": "^3.25.76"
+  }
+}

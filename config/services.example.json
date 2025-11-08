@@ -1,0 +1,42 @@
+{
+  "port": 4141,
+  "allowedHosts": [
+    "127.0.0.1:4141",
+    "localhost:4141"
+  ],
+  "allowedOrigins": [
+    "https://console.heysalad.app"
+  ],
+  "services": [
+    {
+      "id": "cloud-printer",
+      "name": "Cloud Printer Backend",
+    "description": "Handles remote print jobs for kiosks and allied devices.",
+    "baseUrl": "http://127.0.0.1:3100",
+    "healthPath": "/healthz",
+    "docsUrl": "heysalad-cloud-printer-backend/README.md",
+    "timeoutMs": 5000,
+    "requiredScope": "internal"
+  },
+  {
+    "id": "kiosk-portal",
+    "name": "Captive Portal",
+    "description": "Controls onboarding and Wi-Fi provisioning for kiosks.",
+    "baseUrl": "http://127.0.0.1:3200",
+    "healthPath": "/healthz",
+    "docsUrl": "kiosk_portal.py",
+    "timeoutMs": 5000,
+    "requiredScope": "internal"
+  },
+  {
+    "id": "oss-kiosk",
+    "name": "OSS GPT Kiosk Backend",
+    "description": "Surface GPT tools for the OSS kiosk build.",
+    "baseUrl": "http://127.0.0.1:3300",
+    "healthPath": "/healthz",
+    "docsUrl": "heysalad-gpt-oss-kiosk-backend/README.md",
+    "timeoutMs": 8000,
+    "requiredScope": "public"
+  }
+]
+}
