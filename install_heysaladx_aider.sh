@@ -10,8 +10,30 @@ fi
 
 cd heysaladx-aider
 
-# Apply our modifications (you would have the actual patch files)
-# This is where you'd apply the changes we discussed
+# Create a simple setup.py for now since we don't have the full aider structure
+cat > setup.py << 'EOF'
+from setuptools import setup, find_packages
+
+setup(
+    name="heysaladx-aider",
+    version="0.1.0",
+    description="HeySaladX Aider - AI pair programming with cooking flair",
+    packages=find_packages(),
+    entry_points={
+        'console_scripts': [
+            'heysaladx-aider=aider.main:main',
+            'aider=aider.main:main',
+        ],
+    },
+    install_requires=[
+        "openai>=1.0.0",
+        "requests",
+        "click",
+        "rich",
+    ],
+    python_requires=">=3.8",
+)
+EOF
 
 # Install in development mode
 pip install -e .
