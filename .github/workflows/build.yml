@@ -31,6 +31,9 @@ jobs:
 
       - name: Sanity check HeySaladX CLI
         run: npm run heysaladx -- --list-agents
+        
+      - name: Test HeySaladX plain mode
+        run: npm run heysaladx -- --plain --list-agents
 
   agents-python:
     name: Agents (Python)
