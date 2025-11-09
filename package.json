@@ -3,10 +3,16 @@
   "version": "1.0.0",
   "description": "Model Context Protocol server exposing HeySalad operational data and tools",
   "main": "src/server.js",
+  "bin": {
+    "heysaladx": "agents/heysaladx/bin/heysaladx.js"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "NODE_ENV=development node src/server.js",
-    "test": "node --test || echo \"No test suite defined\""
+    "test": "node --test test/device-generator.test.js",
+    "test:watch": "node --test --watch test/device-generator.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/device-generator.test.js",
+    "heysaladx": "node agents/heysaladx/bin/heysaladx.js"
   },
   "keywords": [
     "mcp",
@@ -20,8 +26,17 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
+    "boxen": "^5.1.2",
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "marked": "^15.0.12",
+    "marked-terminal": "^7.3.0",
+    "ora": "^5.4.1",
+    "openai": "^4.77.2",
+    "picocolors": "^1.0.0",
+    "qrcode": "^1.5.4",
     "zod": "^3.25.76"
   }
 }

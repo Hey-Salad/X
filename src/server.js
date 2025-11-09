@@ -6,6 +6,7 @@ const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/ser
 const { completable } = require('@modelcontextprotocol/sdk/server/completable.js');
 const { z } = require('zod');
 const { loadConfig } = require('./config');
+const { DeviceGenerator, validateIMEI: validateImeiHelper, DEFAULT_DEVICE_TYPES } = require('./device-generator');
 const pkg = require('../package.json');
 
 const config = loadConfig();
@@ -17,6 +18,8 @@ const API_KEY_PEPPER = process.env.API_KEY_PEPPER || '';
 const SUPABASE_TABLE = process.env.SUPABASE_MCP_TABLE || 'mcp_keys';
 const SCOPE_PUBLIC = 'public';
 const SCOPE_INTERNAL = 'internal';
+const PUBLIC_SCOPE_ALIASES = new Set(['public', 'driver', 'kitchen', 'courier', 'field', 'laura-mobile']);
+const INTERNAL_SCOPE_ALIASES = new Set(['internal', 'finance', 'approver', 'logistics', 'admin', 'backoffice', 'hr']);
 
 app.use(express.json({ limit: '2mb' }));
 app.use(
@@ -134,7 +137,7 @@ const serviceSchema = z.object({
   healthPath: z.string(),
   docsUrl: z.string().optional(),
   timeoutMs: z.number().optional(),
-  requiredScope: z.enum(['public', 'internal'])
+  requiredScope: z.enum([SCOPE_PUBLIC, SCOPE_INTERNAL])
 });
 
 function buildMcpContext(services) {
@@ -322,6 +325,105 @@ function buildMcpContext(services) {
     }
   );
 
+  const deviceTypeEnum = z.enum([...DEFAULT_DEVICE_TYPES]);
+
+  server.registerTool(
+    'generate_device',
+    {
+      title: 'Generate HeySalad Device Identity',
+      description: 'Create IMEI, HeySalad serial, provisioning URL, and QR code for hardware provisioning.',
+      inputSchema: {
+        count: z
+          .number()
+          .int()
+          .min(1)
+          .max(20)
+          .default(1)
+          .describe('How many devices to generate (1-20).'),
+        deviceType: deviceTypeEnum.optional().describe('Device type (defaults to KIO).'),
+        baseUrl: z
+          .string()
+          .url()
+          .optional()
+          .describe('Provisioning base URL override.'),
+        seed: z
+          .string()
+          .optional()
+          .describe('Optional deterministic seed shared across the generated devices.')
+      },
+      outputSchema: {
+        devices: z.array(
+          z.object({
+            imei: z.string(),
+            serial: z.string(),
+            provisioningURL: z.string(),
+            qrCode: z.string(),
+            metadata: z.object({
+              seed: z.string(),
+              deviceType: deviceTypeEnum,
+              generatedAt: z.string(),
+              imei14: z.string(),
+              luhnCheckDigit: z.number()
+            })
+          })
+        )
+      }
+    },
+    async ({ count = 1, deviceType, baseUrl, seed }) => {
+      const generator = new DeviceGenerator(seed);
+      const devices = [];
+      for (let i = 0; i < count; i += 1) {
+        const device = await generator.generateDevice({
+          deviceType,
+          baseURL: baseUrl,
+          sequence: i
+        });
+        devices.push(device);
+      }
+      const payload = { devices };
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(payload, null, 2)
+          }
+        ],
+        structuredContent: payload
+      };
+    }
+  );
+
+  server.registerTool(
+    'validate_imei',
+    {
+      title: 'Validate IMEI Identifier',
+      description: 'Checks whether a 15-digit IMEI passes the Luhn checksum.',
+      inputSchema: {
+        imei: z
+          .string()
+          .min(15)
+          .max(15)
+          .describe('15 digit IMEI to validate.')
+      },
+      outputSchema: {
+        imei: z.string(),
+        valid: z.boolean()
+      }
+    },
+    async ({ imei }) => {
+      const valid = validateImeiHelper(imei);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ imei, valid }, null, 2)
+          }
+        ],
+        structuredContent: { imei, valid }
+      };
+    }
+  );
+
   return { server, services };
 }
 
@@ -416,8 +518,20 @@ function gracefulShutdown(signal) {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
+function normalizeRole(scope) {
+  if (typeof scope === 'string' && scope.trim().length > 0) {
+    return scope.trim().toLowerCase();
+  }
+  return SCOPE_PUBLIC;
+}
+
+function toAccessLevel(role) {
+  return INTERNAL_SCOPE_ALIASES.has(role) ? SCOPE_INTERNAL : SCOPE_PUBLIC;
+}
+
 function normalizeScopeValue(scope) {
-  return scope === SCOPE_INTERNAL ? SCOPE_INTERNAL : SCOPE_PUBLIC;
+  const role = normalizeRole(scope);
+  return toAccessLevel(role);
 }
 
 function hashKey(apiKey) {
@@ -514,12 +628,16 @@ function requireApiKey(req, res, next) {
         });
       }
 
+      const role = normalizeRole(record.scope);
+      const accessLevel = toAccessLevel(role);
+
       req.mcpIdentity = {
         keyId: record.id,
         userId: record.user_id,
         email: record.user_email,
         keyPrefix: record.key_prefix,
-        scope: normalizeScopeValue(record.scope)
+        scope: accessLevel,
+        role
       };
 
       markKeyUsed(record.id).finally(() => next());

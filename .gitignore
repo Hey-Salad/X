@@ -1,4 +1,14 @@
 node_modules
 config/services.json
 .env
+.env.*
+.supabase-env
+agents/.env.supabase.*
 *.log
+heysaladx.todo.md
+.venv/
+agents/.venv/
+__pycache__/
+*.pyc
+agents/__pycache__/
+agents/stability_outputs/

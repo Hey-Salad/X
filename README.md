@@ -22,6 +22,20 @@ cp config/services.example.json config/services.json
 nano config/services.json  # tweak baseUrl/ports/descriptions
 ```
 
+`config/services.json` is the source of truth for every downstream integration. The Laura Mobile logistics/HR spec ships with the following entries so the MCP server can reason about each component:
+
+| ID | Scope | Purpose |
+| --- | --- | --- |
+| `cloud-printer`, `kiosk-portal`, `oss-kiosk` | internal/public | Legacy kiosk stack touchpoints. |
+| `laura` | public | Primary Laura portal (devices, rewards). |
+| `laura-firebase` | public | Firebase edge that keeps the mobile app in sync. |
+| `laura-driver-telemetry` | public | Real-time driver route + hardware health. |
+| `laura-approvals` | internal | HR/logistics approvals, onboarding packets. |
+| `laura-docs` | internal | Document/PDF generation for contracts + SOPs. |
+| `laura-finance` | internal | Finance + payroll adjustments. |
+
+Feel free to add/edit services in that file only—the server bootstraps its MCP resources and tools directly from it, so no code changes are needed when new services come online.
+
 Environment overrides:
 
 | Variable | Description |
@@ -116,4 +130,26 @@ Open `cursor://anysphere.cursor-deeplink/mcp/install?name=heysalad-mcp&config=ey
 3. Optionally wrap the Node app with a systemd service (e.g., `heysalad-mcp.service`) so it restarts with the Pi.
 4. Once the tunnel is active and DNS propagated, test from outside your LAN: `curl https://mcp.heysalad.app/healthz`.
 
+API keys can now be issued for role-based scopes such as Driver, Kitchen Staff, Logistics, Finance, or Approver. Each key stores its role in Supabase; the server maps those roles back to either the `public` or `internal` access context and exposes the normalized metadata on `req.mcpIdentity.role` for downstream tooling.
+
 Let me know if you need help wiring systemd units, adding auth, or automating Cloudflare bootstrap. 
+
+---
+
+- ### 6. Developer Agents & Tooling
+
+- The `agents/` directory hosts CLI helpers (DeepSeek, Qwen, OCR, Stability, hardware, file-ops, autonomous GPT-OSS developer, etc.) used to reason about the repo or external services. Install them with a virtualenv (`pip install -r agents/requirements.txt`) and see `agents/README.md` plus `AGENTS.md` for setup, credentials, and sample commands.
+- Run `npm run heysaladx` to enter the Codex-style HeySaladX REPL (type `/help` once inside) or pass a one-off instruction via `npm run heysaladx -- "Task description"`. The orchestrator chains any configured sub-agents (including the hardware/file-ops specialists) and synthesizes the result via GPT-OSS-120B. Export `HF_TOKEN` (required) and optionally `OPENAI_API_KEY` for Codex/GPT snippets.
+- Each REPL turn extracts action items and appends them to `heysaladx.todo.md`, giving you a running backlog mapped to every prompt.
+- Supabase test credentials live in `agents/.env.supabase.test` (ignored by git). Use `agents/supabase_cli_helper.sh` to run scoped Supabase CLI commands with those env vars preloaded.
+
+---
+
+### Continuous Integration
+
+All pushes and pull requests run `.github/workflows/build.yml`, which:
+
+- Executes `npm ci && npm test` on Node 20 to cover the MCP server and device generator suite.
+- Installs the Python agent dependencies and byte-compiles `agents/*.py` to catch syntax errors before merging.
+
+Extend the workflow as you add linting, integration tests, or deployment steps.
