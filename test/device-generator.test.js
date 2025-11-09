@@ -1,6 +1,6 @@
-const { describe, it, beforeEach } = require('node:test');
-const assert = require('node:assert/strict');
-const { DeviceGenerator, validateIMEI, validateHeySaladSerial } = require('../src/device-generator');
+import { describe, it, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { DeviceGenerator, validateIMEI, validateHeySaladSerial, DEFAULT_DEVICE_TYPES } from '../src/device-generator.js';
 
 describe('DeviceGenerator', () => {
   describe('seeding + rng', () => {

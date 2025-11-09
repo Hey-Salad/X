@@ -146,12 +146,111 @@ function brandBanner() {
   console.log(`${header}\n`);
 }
 
+// Custom cooking spinner implementation
+class CookingSpinner {
+  constructor(text = "cooking...") {
+    this.text = text;
+    this.interval = null;
+    this.frameIndex = 0;
+    this.frames = ['▓▒░░░░', '█▓▒░░░', '██▓▒░░', '███▓▒░', '████▓▒', '██████'];
+    this.emojis = ['🍳', '🍅', '🔪', '🍲'];
+    this.emojiIndex = 0;
+    this.isActive = false;
+  }
+
+  start() {
+    if (!useSpinner) return;
+    this.isActive = true;
+    process.stdout.write('\x1B[?25l'); // Hide cursor
+    
+    this.interval = setInterval(() => {
+      const frame = this.frames[this.frameIndex % this.frames.length];
+      const emoji = this.emojis[this.emojiIndex % this.emojis.length];
+      const statusText = `[HeySaladX] ${this.text} ${frame} ${emoji}`;
+      
+      process.stdout.write('\r' + chalk.hex(COLORS.peach)(statusText));
+      
+      this.frameIndex++;
+      if (this.frameIndex % 2 === 0) {
+        this.emojiIndex++;
+      }
+    }, 120);
+  }
+
+  stop() {
+    if (!useSpinner) return;
+    this.isActive = false;
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+    process.stdout.write('\x1B[?25h'); // Show cursor
+  }
+
+  updateText(text) {
+    this.text = text;
+  }
+}
+
+// Checkbox states with cooking theme
+const CHECKBOX_STATES = {
+  todo: useStyle ? chalk.dim('[ ]') : '[ ]',
+  doing: useStyle ? chalk.hex(COLORS.peach).bold('[⚡]') : '[⚡]',
+  done: useStyle ? chalk.hex('#2E8B57').bold('[x]') : '[x]'
+};
+
+// Enhanced text formatting
+function formatHeader(text) {
+  return useStyle ? chalk.hex(COLORS.header).bold(text) : text;
+}
+
+function formatAccent(text) {
+  return useStyle ? chalk.hex(COLORS.peach)(text) : text;
+}
+
+function formatMuted(text) {
+  return useStyle ? chalk.dim(text) : text;
+}
+
+function formatPercentage(current, total) {
+  const percent = Math.round((current / total) * 100);
+  return useStyle ? chalk.hex(COLORS.peach)(`${percent}%`) : `${percent}%`;
+}
+
+// Wrapped text with proper formatting
+function formatWrappedText(text, width = 80) {
+  if (!useStyle) return text;
+  return wordWrap(text, { width, indent: '' });
+}
+
+// Replace ora spinner with our custom cooking spinner
 function startSpinner(text) {
   if (!useSpinner) {
     return null;
   }
-  const spinner = ora({ text, color: "red" }).start();
+  const spinner = new CookingSpinner(text);
+  spinner.start();
   return () => spinner.stop();
+}
+
+// Update task display with checkbox states
+function displayTaskList(tasks, currentIndex = -1) {
+  if (!tasks.length) return;
+  
+  tasks.forEach((task, index) => {
+    let checkbox;
+    if (index === currentIndex) {
+      checkbox = CHECKBOX_STATES.doing;
+    } else if (index < currentIndex) {
+      checkbox = CHECKBOX_STATES.done;
+    } else {
+      checkbox = CHECKBOX_STATES.todo;
+    }
+    
+    const taskText = useStyle ? chalk.white(task) : task;
+    console.log(`${checkbox} ${taskText}`);
+  });
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
