@@ -245,7 +245,7 @@ async function renderAiMessage(text) {
 }
 
 function printSection(title) {
-  const label = useStyle ? chalk.hex(COLORS.header).bold(`\n${title}`) : `\n${title}`;
+  const label = formatHeader(`\n${title}`);
   console.log(label);
 }
 
@@ -491,10 +491,11 @@ function delegatedSummary(result) {
 async function printResult(result, promptText) {
   const agentKeys = Object.keys(result.delegated);
   if (agentKeys.length) {
-    console.log(BRAND.muted(`Delegated context ingested from: ${agentKeys.join(", ")}`));
+    console.log(formatMuted(`Delegated context ingested from: ${agentKeys.join(", ")}`));
+    console.log(formatMuted(`Context processed: ${formatPercentage(agentKeys.length, Object.keys(SUB_AGENTS).length)}`));
   }
   if (result.codex) {
-    console.log(BRAND.muted("Codex helper output included."));
+    console.log(formatMuted("Codex helper output included."));
   }
 
   let aiMessage;
@@ -516,15 +517,15 @@ async function printResult(result, promptText) {
   const links = extractLinksFromText(texts);
   if (links.length) {
     printSection("Links");
-    links.forEach((link) => console.log(pc.underline(BRAND.accent(`• ${link}`))));
+    links.forEach((link) => console.log(formatAccent(`• ${link}`)));
   }
 
   const tasks = extractTasksFromText(texts);
   if (tasks.length) {
     printSection("Next Tasks / TODO");
-    tasks.forEach((task, idx) => console.log(BRAND.accent(`${idx + 1}. ${task}`)));
+    displayTaskList(tasks);
     persistTodoEntries(tasks, promptText);
-    console.log(BRAND.muted(`Tasks appended to ${path.relative(REPO_ROOT, TODO_PATH)}.`));
+    console.log(formatMuted(`Tasks appended to ${path.relative(REPO_ROOT, TODO_PATH)}.`));
   }
 }
 

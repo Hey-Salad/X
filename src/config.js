@@ -123,7 +123,4 @@ function loadConfig() {
   };
 }
 
-module.exports = {
-  loadConfig,
-  DEFAULT_CONFIG
-};
+export { loadConfig, DEFAULT_CONFIG };
