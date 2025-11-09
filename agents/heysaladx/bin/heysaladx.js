@@ -505,14 +505,33 @@ function saveCliHistory(history) {
 }
 
 async function orchestrate(task, options, contextBlocks, historyMessages) {
-  const token = process.env.HF_TOKEN;
-  if (!token) {
-    throw new Error("HF_TOKEN is required to contact GPT-OSS-120B. Export it before running heysaladx.");
+  // Try DeepSeek first (free tier, no token required)
+  const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
+  const hfToken = process.env.HF_TOKEN;
+  
+  let client;
+  let model;
+  
+  if (deepseekApiKey) {
+    // Use DeepSeek
+    client = new OpenAI({
+      apiKey: deepseekApiKey,
+      baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"
+    });
+    model = process.env.HEYSALADX_MODEL || "deepseek-chat";
+  } else if (hfToken) {
+    // Fall back to GPT-OSS via Hugging Face
+    client = new OpenAI({
+      apiKey: hfToken,
+      baseURL: process.env.HF_BASE_URL || "https://router.huggingface.co/v1"
+    });
+    model = process.env.HEYSALADX_MODEL || "openai/gpt-oss-120b:groq";
+  } else {
+    throw new Error(
+      "No API key found. Set either DEEPSEEK_API_KEY (recommended) or HF_TOKEN. " +
+      "Get DeepSeek API key from: https://platform.deepseek.com/api_keys"
+    );
   }
-  const client = new OpenAI({
-    apiKey: token,
-    baseURL: process.env.HF_BASE_URL || "https://router.huggingface.co/v1"
-  });
 
   const messages = [];
   const systemPrompt = options.system || DEFAULT_SYSTEM_PROMPT;
@@ -534,7 +553,7 @@ async function orchestrate(task, options, contextBlocks, historyMessages) {
   });
 
   const response = await client.chat.completions.create({
-    model: process.env.HEYSALADX_MODEL || "openai/gpt-oss-120b:groq",
+    model,
     max_tokens: Number(process.env.HEYSALADX_MAX_TOKENS || 900),
     temperature: Number(process.env.HEYSALADX_TEMPERATURE || 0.2),
     messages
@@ -834,7 +853,17 @@ async function main() {
   if (!opts.json) {
     stopSpinner = startSpinner("Orchestrating with HeySaladX");
   }
-  const result = await runWorkflow(task, opts, chainList, null);
+  let result;
+  try {
+    result = await runWorkflow(task, opts, chainList, null);
+  } catch (error) {
+    stopSpinner?.();
+    console.error(pc.red(`Orchestration failed: ${error.message}`));
+    if (error.message.includes("DEEPSEEK_API_KEY")) {
+      console.log(formatMuted("Get your free API key from: https://platform.deepseek.com/api_keys"));
+    }
+    process.exit(1);
+  }
   if (stopSpinner) {
     stopSpinner();
     console.log();
