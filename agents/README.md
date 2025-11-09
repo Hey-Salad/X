@@ -260,35 +260,47 @@ want a free-form assistant to lead the response.
 
 # HeySaladX Orchestrator (Node CLI)
 
-`agents/heysaladx/bin/heysaladx.js` is the “control tower” that chains multiple agents, Codex/GPT helpers, and produces an aggregated plan via GPT-OSS-120B.
+`agents/heysaladx/bin/heysaladx.js` is the “control tower” that chains multiple agents, Codex/GPT helpers, and produces an aggregated plan via GPT-OSS-120B. Now with enhanced ESM-based interactive terminal UI.
 
 ```bash
 cd ~/heysalad-mcp
-npm run heysaladx                # interactive REPL (type /help once inside)
+npm run heysaladx                # interactive REPL with rich UI (type /help once inside)
 npm run heysaladx -- --list-agents
 HF_TOKEN=hf_your_token OPENAI_API_KEY=sk-... npm run heysaladx -- \
   -c dev,hardware,qwen "Ship the MCP + firmware update workflow"
 ```
 
-REPL commands:
+## Enhanced UI Features
+
+- **ESM Migration**: Full ES Modules support with modern import/export syntax
+- **Cooking Theme**: Custom spinner: `[HeySaladX] cooking... ▓▒░░░░ 🍳` with rotating emojis
+- **Brand Colors**: Peach (#faa09a) and cherry red (#ed4c4c) throughout
+- **Interactive Prompts**: Checkbox selections and priority settings
+- **Task Visualization**: Checkbox states: [ ] todo, [⚡] doing, [x] done
+- **Context Indicators**: Percentage completion and progress tracking
+
+## REPL Commands
 
 - `/help` – list commands
 - `/chain <ids>` – view or update delegated agents (`dev`, `qwen`, `hardware`, etc.)
+- `/select-agents` – interactive checkbox selection of agents
+- `/priority` – set task priority with visual indicators
 - `/history` – print the current transcript (persists if `--history file.json` is set)
 - `/agents`, `/clear`, `/quit`
 
-One-off flags:
+## One-off Flags
 
 - `--chain dev,qwen,hardware` – run those agents first and feed their output into the orchestrator
 - `--skip-summary` – only print delegated output (no GPT-OSS summary)
 - `--json` – emit machine-readable results (delegated outputs, Codex response, summary)
 - `--history history.json` / `--system prompt` – customize or persist the GPT-OSS orchestration context
 - `--list-agents` – print the agent table and exit
-- `--plain` – turn off colors, gradients, spinner, and typewriter animation (also respects `HEYSALADX_PLAIN=1`)
+- `--plain` – disable enhanced UI (colors, spinner, animations) for backward compatibility
 
-Environment variables:
+## Environment Variables
 
 - `HF_TOKEN` (required for the GPT-OSS summary), `HF_BASE_URL`, `HEYSALADX_MODEL/TEMPERATURE/MAX_TOKENS`
 - `OPENAI_API_KEY` (optional) plus `HEYSALADX_CODEX_MODEL/TEMPERATURE/MAX_TOKENS` for the Codex helper
+- `HEYSALADX_PLAIN=1` – enable plain mode (equivalent to `--plain`)
 
-Tip: run `npm link` inside the repo to install the `heysaladx` binary globally, then invoke it from any directory. The REPL automatically logs derived tasks to `heysaladx.todo.md`; open that file anytime for a running backlog.
+**Tip**: Run `npm link` inside the repo to install the `heysaladx` binary globally, then invoke it from any directory. The REPL automatically logs derived tasks to `heysaladx.todo.md`; open that file anytime for a running backlog.
