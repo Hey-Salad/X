@@ -99,7 +99,7 @@ function normalizeService(service) {
 }
 
 function loadConfig() {
-  const fallbackConfigPath = path.join(import.meta.dirname, '..', 'config', 'services.json');
+  const fallbackConfigPath = path.join(new URL('.', import.meta.url).pathname, '..', 'config', 'services.json');
   const configPath = process.env.HEYSALAD_MCP_CONFIG || fallbackConfigPath;
   const fileConfig = readJsonIfExists(configPath) || {};
 

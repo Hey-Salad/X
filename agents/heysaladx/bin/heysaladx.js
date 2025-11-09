@@ -31,7 +31,7 @@ import inquirer from "inquirer";
 
 const TerminalRenderer = TerminalRendererMod?.default || TerminalRendererMod;
 
-const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+const REPO_ROOT = path.resolve(new URL('.', import.meta.url).pathname, "..", "..", "..");
 const CLI_HISTORY_FILE = path.join(os.homedir(), ".heysaladx_history");
 const TODO_PATH = path.join(REPO_ROOT, "heysaladx.todo.md");
 const DEFAULT_SYSTEM_PROMPT =
