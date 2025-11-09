@@ -61,12 +61,66 @@ def call_local_agent(endpoint: str, payload: dict, timeout: int = 300) -> dict:
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode('utf-8'))
-    except urllib.error.HTTPError as exc:
-        error_body = exc.read().decode('utf-8', errors='ignore')
-        raise RuntimeError(f'Agent HTTP {exc.code}: {error_body}') from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f'Failed to reach agent at {endpoint}: {exc}') from exc
+            response_text = response.read().decode('utf-8')
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError:
+                # If the response isn't valid JSON, wrap it in a response field
+                return {'response': response_text}
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        print(f"Local agent failed: {exc}, falling back to official API")
+        # Fallback to official API
+        return call_official_api(payload, timeout)
+
+
+def call_official_api(payload: dict, timeout: int = 300) -> dict:
+    # Get API key from environment
+    api_key = os.environ.get('DEEPSEEK_API_KEY')
+    if not api_key:
+        raise RuntimeError('DEEPSEEK_API_KEY environment variable is required for fallback')
+    
+    # Convert our payload to the official API format
+    messages = []
+    if 'systemPrompt' in payload:
+        messages.append({'role': 'system', 'content': payload['systemPrompt']})
+    
+    # Add history
+    if 'history' in payload:
+        messages.extend(payload['history'])
+    
+    # Add current prompt
+    messages.append({'role': 'user', 'content': payload['prompt']})
+    
+    # Prepare official API request
+    api_payload = {
+        'model': 'deepseek-coder',
+        'messages': messages,
+        'max_tokens': payload.get('maxNewTokens', 1024),
+        'temperature': 0.7,  # Default temperature
+        'top_p': payload.get('topP', 0.9),
+        'frequency_penalty': payload.get('repetitionPenalty', 1.05) - 1.0,
+    }
+    
+    data = json.dumps(api_payload).encode('utf-8')
+    request = urllib.request.Request(
+        'https://api.deepseek.com/chat/completions',
+        data=data,
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}'
+        },
+        method='POST'
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response_data = json.loads(response.read().decode('utf-8'))
+            # Extract the response text
+            if 'choices' in response_data and len(response_data['choices']) > 0:
+                return {'response': response_data['choices'][0]['message']['content']}
+            else:
+                raise RuntimeError(f'Unexpected API response: {response_data}')
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        raise RuntimeError(f'Official API also failed: {exc}') from exc
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
