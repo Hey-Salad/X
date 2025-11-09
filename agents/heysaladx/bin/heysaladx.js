@@ -23,7 +23,7 @@ import chalk from "chalk";
 import boxen from "boxen";
 import { Command } from "commander";
 import { OpenAI } from "openai";
-import marked from "marked";
+import { marked } from "marked";
 import TerminalRendererMod from "marked-terminal";
 import cliSpinners from "cli-spinners";
 import wordWrap from "word-wrap";
