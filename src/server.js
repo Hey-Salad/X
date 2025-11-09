@@ -1,12 +1,15 @@
-const express = require('express');
-const cors = require('cors');
-const crypto = require('crypto');
-const { McpServer, ResourceTemplate } = require('@modelcontextprotocol/sdk/server/mcp.js');
-const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
-const { completable } = require('@modelcontextprotocol/sdk/server/completable.js');
-const { z } = require('zod');
-const { loadConfig } = require('./config');
-const { DeviceGenerator, validateIMEI: validateImeiHelper, DEFAULT_DEVICE_TYPES } = require('./device-generator');
+import express from 'express';
+import cors from 'cors';
+import crypto from 'crypto';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { completable } from '@modelcontextprotocol/sdk/server/completable.js';
+import { z } from 'zod';
+import { loadConfig } from './config.js';
+import { DeviceGenerator, validateIMEI as validateImeiHelper, DEFAULT_DEVICE_TYPES } from './device-generator.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 const pkg = require('../package.json');
 
 const config = loadConfig();

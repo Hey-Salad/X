@@ -1,7 +1,7 @@
-const crypto = require('crypto');
-const QRCode = require('qrcode');
+import crypto from 'crypto';
+import QRCode from 'qrcode';
 
-const DEFAULT_DEVICE_TYPES = ['KIO', 'TAB', 'POS', 'KDS'];
+export const DEFAULT_DEVICE_TYPES = ['KIO', 'TAB', 'POS', 'KDS'];
 const DEFAULT_BASE_URL = 'https://provision.heysalad.app';
 
 function ensureDeviceType(type = 'KIO') {
@@ -171,12 +171,7 @@ class DeviceGenerator {
   }
 }
 
-const validateIMEI = imei => new DeviceGenerator().validateIMEI(imei);
-const validateHeySaladSerial = serial => new DeviceGenerator().validateHeySaladSerial(serial);
+export const validateIMEI = imei => new DeviceGenerator().validateIMEI(imei);
+export const validateHeySaladSerial = serial => new DeviceGenerator().validateHeySaladSerial(serial);
 
-module.exports = {
-  DeviceGenerator,
-  validateIMEI,
-  validateHeySaladSerial,
-  DEFAULT_DEVICE_TYPES
-};
+export default DeviceGenerator;
