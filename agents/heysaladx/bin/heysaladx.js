@@ -12,21 +12,23 @@
  *   npm run heysaladx -- "Ship MCP + KellAI OTA rollout"
  */
 
-const fs = require("node:fs");
-const path = require("node:path");
-const os = require("node:os");
-const process = require("node:process");
-const readline = require("node:readline");
-const { spawnSync } = require("node:child_process");
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { spawnSync } from "node:child_process";
+import readline from "node:readline";
 
-const pc = require("picocolors");
-const chalk = require("chalk");
-const boxen = require("boxen");
-const ora = require("ora");
-const { Command } = require("commander");
-const { OpenAI } = require("openai");
-const marked = require("marked");
-const TerminalRendererMod = require("marked-terminal");
+import pc from "picocolors";
+import chalk from "chalk";
+import boxen from "boxen";
+import { Command } from "commander";
+import { OpenAI } from "openai";
+import marked from "marked";
+import TerminalRendererMod from "marked-terminal";
+import cliSpinners from "cli-spinners";
+import wordWrap from "word-wrap";
+import inquirer from "inquirer";
+
 const TerminalRenderer = TerminalRendererMod?.default || TerminalRendererMod;
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");

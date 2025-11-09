@@ -174,4 +174,5 @@ class DeviceGenerator {
 export const validateIMEI = imei => new DeviceGenerator().validateIMEI(imei);
 export const validateHeySaladSerial = serial => new DeviceGenerator().validateHeySaladSerial(serial);
 
+export { DeviceGenerator };
 export default DeviceGenerator;
