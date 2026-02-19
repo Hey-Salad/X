@@ -25,7 +25,6 @@ import { Command } from "commander";
 import { OpenAI } from "openai";
 import { marked } from "marked";
 import TerminalRendererMod from "marked-terminal";
-import cliSpinners from "cli-spinners";
 import wordWrap from "word-wrap";
 import inquirer from "inquirer";
 
@@ -56,10 +55,10 @@ const COLORS = {
 };
 const BOX_STYLES = {
   user: {
-    prefix: "$",
-    borderColor: COLORS.peach,
-    backgroundColor: COLORS.peach,
-    textColor: COLORS.userText,
+    prefix: "x>",
+    borderColor: useStyle ? "#dcdcdc" : COLORS.peach,
+    backgroundColor: useStyle ? "#2b2b2b" : COLORS.peach,
+    textColor: useStyle ? "#ffffff" : COLORS.userText,
     alignRight: true
   },
   ai: {
@@ -70,8 +69,200 @@ const BOX_STYLES = {
     alignRight: false
   }
 };
+const STATUS_BAR_FRAMES = [
+  "▓▒░░░░░░",
+  "▒░░░░░░▓",
+  "░░░░░░▓▒",
+  "░░░░░▓▒░",
+  "░░░░▓▒░░",
+  "░░▓▒░░░░",
+  "▓▒░░░░░░",
+  "▒░░░░░░▓"
+];
+const STATUS_ACTIONS = {
+  cooking: { label: "cooking" },
+  thinking: { label: "thinking" },
+  analyzing: { label: "analyzing" },
+  building: { label: "building" },
+  deploying: { label: "deploying" }
+};
+const TIP_MESSAGES = [
+  "Context low. Try /summarize to compress history",
+  "Use 'esc' to interrupt long operations",
+  "Type /chain prompt for AI-powered prompts",
+  "Run heysaladx --no-codex for plain output",
+  "Check AGENTS.md for all available agents"
+];
+const CHECKBOXES = {
+  TODO: useStyle ? chalk.hex("#666666")("[ ]") : "[ ]",
+  DOING: useStyle ? chalk.hex("#faa09a").bold("[⚡]") : "[⚡]",
+  DONE: useStyle ? chalk.hex("#00ff00").bold("[x]") : "[x]",
+  ERROR: useStyle ? chalk.hex("#ff0000").bold("[✗]") : "[✗]"
+};
+const TEXT_STYLES = {
+  primary: (text) => (useStyle ? chalk.bold.hex(COLORS.peach)(text) : text),
+  normal: (text) => (useStyle ? chalk.white(text) : text),
+  muted: (text) => (useStyle ? chalk.dim(text) : text),
+  success: (text) => (useStyle ? chalk.bold.hex("#00ff00")(text) : text),
+  error: (text) => (useStyle ? chalk.bold.hex("#ff0000")(text) : text)
+};
+function formatHeader(text) {
+  return TEXT_STYLES.primary(text);
+}
+
+function formatAccent(text) {
+  return TEXT_STYLES.normal(text);
+}
+
+function formatMuted(text) {
+  return TEXT_STYLES.muted(text);
+}
+
+function formatPercentage(current, total) {
+  const percent = total ? Math.round((current / total) * 100) : 0;
+  return TEXT_STYLES.primary(`${percent}%`);
+}
+const collapseQueue = [];
+const GIT_REFRESH_INTERVAL = 5000;
+let successCommandCount = 0;
+let lastTipContextPercent = 100;
+let lastTipTime = 0;
+let promptContext = { branch: "main", ahead: 0, percent: 72 };
+let pendingStatusLine = null;
+let lastGitStatusCheck = 0;
 const ANSI_REGEX = /\x1B\[[0-9;]*m/g;
-const getPrompt = () => (useStyle ? chalk.hex(COLORS.peach)("heysaladx> ") : "heysaladx> ");
+
+function getContextPercent(historyLength = 0) {
+  const clamped = Math.max(0, historyLength);
+  return Math.max(5, Math.min(95, 100 - Math.min(clamped * 2, 80)));
+}
+
+function refreshGitContext() {
+  const now = Date.now();
+  if (now - lastGitStatusCheck < GIT_REFRESH_INTERVAL) {
+    return;
+  }
+  lastGitStatusCheck = now;
+  try {
+    const result = spawnSync("git", ["status", "-sb"], {
+      cwd: REPO_ROOT,
+      encoding: "utf-8"
+    });
+    if (result.status !== 0) {
+      return;
+    }
+    const line = (result.stdout || "").split("\n")[0] || "";
+    const branchPart = line.replace(/^##\s+/, "").split("...")[0].trim();
+    if (branchPart) {
+      promptContext.branch = branchPart;
+    }
+    const aheadMatch = line.match(/ahead (\d+)/);
+    promptContext.ahead = aheadMatch ? Number(aheadMatch[1]) : 0;
+  } catch (error) {
+    // ignore git errors
+  }
+}
+
+function getPromptMarker() {
+  return TEXT_STYLES.primary("x> ");
+}
+
+function buildContextLine() {
+  const percentColor =
+    promptContext.percent > 60
+      ? chalk.green
+      : promptContext.percent >= 30
+      ? chalk.yellow
+      : chalk.red;
+  const percentText = percentColor(`${promptContext.percent}% context`);
+  const aheadText = promptContext.ahead ? ` ↑${promptContext.ahead}` : "";
+  return TEXT_STYLES.muted(`[${promptContext.branch}${aheadText}] ${percentText}`);
+}
+
+function updatePromptContext(rl, historyLength = 0) {
+  promptContext.percent = getContextPercent(historyLength);
+  refreshGitContext();
+  if (rl) {
+    rl.setPrompt(getPromptMarker());
+  }
+  return buildContextLine();
+}
+
+function showPrompt(rl) {
+  console.log(renderContextBar());
+  rl.prompt();
+}
+
+function renderContextBar() {
+  const contextLine = buildContextLine();
+  if (!useStyle) {
+    return contextLine;
+  }
+  return chalk.bgHex("#1b1b1b").white(` ${contextLine} `);
+}
+
+function logAction(message) {
+  console.log(TEXT_STYLES.normal(`• ${message}`));
+}
+
+class StatusLine {
+  constructor(action = "thinking", detail = "") {
+    this.action = action;
+    this.detail = detail;
+    this.frameIndex = 0;
+    this.interval = null;
+    this.started = false;
+  }
+
+  start() {
+    if (!useSpinner) return;
+    this.render();
+    this.interval = setInterval(() => this.render(), 140);
+    process.stdout.write("\x1B[?25l");
+  }
+
+  render() {
+    const actionMeta = STATUS_ACTIONS[this.action] || { label: this.action };
+    const frame = STATUS_BAR_FRAMES[this.frameIndex % STATUS_BAR_FRAMES.length];
+    const detailSuffix = this.detail ? ` ${chalk.dim(this.detail)}` : "";
+    const statusText = `[HeySaladX] • ${actionMeta.label}... ${frame}${detailSuffix}`;
+    if (!this.started) {
+      process.stdout.write(`${statusText}\n`);
+      this.started = true;
+    } else {
+      process.stdout.write("\x1b[1A\x1b[K" + statusText + "\n");
+    }
+    this.frameIndex++;
+  }
+
+  update(action, detail) {
+    if (action) {
+      this.action = action;
+    }
+    if (detail) {
+      this.detail = detail;
+    }
+  }
+
+  stop() {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+    if (this.started) {
+      process.stdout.write("\x1b[1A\x1b[K");
+    }
+    process.stdout.write("\x1B[?25h");
+  }
+}
+
+function startStatusLine(action = "thinking", detail = "") {
+  if (!useSpinner) return null;
+  const line = new StatusLine(action, detail);
+  pendingStatusLine = line;
+  line.start();
+  return line;
+}
 marked.setOptions({
   renderer: new TerminalRenderer({
     reflowText: false,
@@ -148,111 +339,179 @@ function brandBanner() {
   console.log(`${header}\n`);
 }
 
-// Custom cooking spinner implementation
-class CookingSpinner {
-  constructor(text = "cooking...") {
-    this.text = text;
-    this.interval = null;
-    this.frameIndex = 0;
-    this.frames = ['▓▒░░░░', '█▓▒░░░', '██▓▒░░', '███▓▒░', '████▓▒', '██████'];
-    this.emojis = ['🍳', '🍅', '🔪', '🍲'];
-    this.emojiIndex = 0;
-    this.isActive = false;
+function renderStartupCard(currentChain = []) {
+  if (!useStyle) {
+    console.log("HeySaladX Interactive Session");
+    return;
   }
-
-  start() {
-    if (!useSpinner) return;
-    this.isActive = true;
-    process.stdout.write('\x1B[?25l'); // Hide cursor
-    
-    this.interval = setInterval(() => {
-      const frame = this.frames[this.frameIndex % this.frames.length];
-      const emoji = this.emojis[this.emojiIndex % this.emojis.length];
-      const statusText = `[HeySaladX] ${this.text} ${frame} ${emoji}`;
-      
-      process.stdout.write('\r' + chalk.hex(COLORS.peach)(statusText));
-      
-      this.frameIndex++;
-      if (this.frameIndex % 2 === 0) {
-        this.emojiIndex++;
-      }
-    }, 120);
-  }
-
-  stop() {
-    if (!useSpinner) return;
-    this.isActive = false;
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-    process.stdout.write('\r' + ' '.repeat(50) + '\r');
-    process.stdout.write('\x1B[?25h'); // Show cursor
-  }
-
-  updateText(text) {
-    this.text = text;
-  }
+  const modelName = process.env.HEYSALADX_MODEL || "deepseek-chat";
+  const chainDisplay = currentChain.length ? currentChain.join(" · ") : "autodev";
+  const directoryDisplay = path.relative(os.homedir(), REPO_ROOT) || "~";
+  const headerLines = [
+    "╭───────────────────────────────────────────────╮",
+    `│ >_ HeySaladX (${process.env.HEYSALADX_VERSION || "v1.0.0"})                           │`,
+    `│ model:     ${modelName.padEnd(24)} /model to change │`,
+    `│ chain:     ${chainDisplay.padEnd(24)} /chain to change │`,
+    `│ directory: ${directoryDisplay.padEnd(24)} /pwd       │`,
+    "╰───────────────────────────────────────────────╯"
+  ];
+  console.log(headerLines.join("\n"));
 }
 
-// Checkbox states with cooking theme
-const CHECKBOX_STATES = {
-  todo: useStyle ? chalk.dim('[ ]') : '[ ]',
-  doing: useStyle ? chalk.hex(COLORS.peach).bold('[⚡]') : '[⚡]',
-  done: useStyle ? chalk.hex('#2E8B57').bold('[x]') : '[x]'
-};
-
-// Enhanced text formatting
-function formatHeader(text) {
-  return useStyle ? chalk.hex(COLORS.header).bold(text) : text;
-}
-
-function formatAccent(text) {
-  return useStyle ? chalk.hex(COLORS.peach)(text) : text;
-}
-
-function formatMuted(text) {
-  return useStyle ? chalk.dim(text) : text;
-}
-
-function formatPercentage(current, total) {
-  const percent = Math.round((current / total) * 100);
-  return useStyle ? chalk.hex(COLORS.peach)(`${percent}%`) : `${percent}%`;
+function displayStartupHints() {
+  const hints = [
+    "• /help   - show commands",
+    "• /chain  - adjust delegation chain",
+    "• /status - show session config",
+    "• /quit   - exit cleanly",
+    "",
+    "Use Enter on a blank line to expand collapsed output."
+  ];
+  hints.forEach((line) => console.log(line));
 }
 
 // Wrapped text with proper formatting
 function formatWrappedText(text, width = 80) {
   if (!useStyle) return text;
-  return wordWrap(text, { width, indent: '' });
+  return wordWrap(text, { width, indent: "" });
 }
 
-// Replace ora spinner with our custom cooking spinner
-function startSpinner(text) {
-  if (!useSpinner) {
-    return null;
-  }
-  const spinner = new CookingSpinner(text);
-  spinner.start();
-  return () => spinner.stop();
+function renderTaskRow(item = {}) {
+  const { title = "Task", status = "TODO", meta = "" } = typeof item === "string" ? { title: item } : item;
+  const checkbox = CHECKBOXES[status.toUpperCase()] || CHECKBOXES.TODO;
+  const name = TEXT_STYLES.normal(title);
+  const suffix = meta ? ` ${TEXT_STYLES.muted(meta)}` : "";
+  const bullet = TEXT_STYLES.normal("•");
+  return `${bullet} ${checkbox} ${name}${suffix}`;
 }
 
-// Update task display with checkbox states
-function displayTaskList(tasks, currentIndex = -1) {
+function displayTaskList(tasks = []) {
   if (!tasks.length) return;
-  
-  tasks.forEach((task, index) => {
-    let checkbox;
-    if (index === currentIndex) {
-      checkbox = CHECKBOX_STATES.doing;
-    } else if (index < currentIndex) {
-      checkbox = CHECKBOX_STATES.done;
-    } else {
-      checkbox = CHECKBOX_STATES.todo;
-    }
-    
-    const taskText = useStyle ? chalk.white(task) : task;
-    console.log(`${checkbox} ${taskText}`);
+  tasks.forEach((task) => {
+    console.log(renderTaskRow(task));
   });
+}
+
+function renderPromptBox(title, lines = []) {
+  const content = [title, ...lines].filter(Boolean).join("\n");
+  return boxen(content, {
+    padding: { top: 0, bottom: 0, left: 1, right: 1 },
+    margin: 0,
+    borderColor: COLORS.peach,
+    borderStyle: "round"
+  });
+}
+
+async function promptYesNo(rl, config = {}) {
+  const {
+    title = "Confirm action",
+    detail = "",
+    yesLabel = "YES, commit now",
+    noLabel = "NO, let me review"
+  } = config;
+  const box = renderPromptBox(`🍅 ${title}`, [
+    detail,
+    "",
+    `   [1] ✔ ${yesLabel}`,
+    `   [2] ✘ ${noLabel}`,
+    "",
+    "   (press 1-2 or use arrow keys)"
+  ]);
+  console.log(box);
+  const prompt = [
+    {
+      type: "list",
+      name: "choice",
+      message: "",
+      choices: [
+        { name: `[1] ✔ ${yesLabel}`, value: true },
+        { name: `[2] ✘ ${noLabel}`, value: false }
+      ],
+      prefix: ""
+    }
+  ];
+  rl.pause();
+  const { choice } = await inquirer.prompt(prompt);
+  rl.resume();
+  return choice;
+}
+
+async function promptMultiSelect(rl, config = {}) {
+  const {
+    title = "Select options",
+    detail = "",
+    choices = [],
+    hint = "↑↓ navigate  Space select  Enter done"
+  } = config;
+  const body = [detail, "", `   ${hint}`];
+  console.log(renderPromptBox(`🍳 ${title}`, body));
+  const prompt = [
+    {
+      type: "checkbox",
+      name: "selected",
+      message: "",
+      choices: choices.map((choice) => ({
+        name: `${choice.checked ? CHECKBOXES.DONE : CHECKBOXES.TODO} ${choice.label}`,
+        value: choice.value ?? choice.label,
+        checked: Boolean(choice.checked)
+      })),
+      prefix: ""
+    }
+  ];
+  rl.pause();
+  const { selected } = await inquirer.prompt(prompt);
+  rl.resume();
+  return selected;
+}
+
+function queueCollapsibleOutput(title, lines = []) {
+  const preview = lines.slice(0, 5);
+  console.log(TEXT_STYLES.primary(title));
+  console.log("↳");
+  preview.forEach((line) => console.log(`  ${line}`));
+  if (lines.length > preview.length) {
+    console.log(`  … +${lines.length - preview.length} lines (press enter to expand)`);
+    collapseQueue.push({ title, remaining: lines.slice(preview.length) });
+  }
+}
+
+function expandNextCollapsedOutput() {
+  if (!collapseQueue.length) {
+    return false;
+  }
+  const { title, remaining } = collapseQueue.shift();
+  console.log(TEXT_STYLES.normal(`Expanded: ${title}`));
+  remaining.forEach((line) => console.log(`  ${line}`));
+  return true;
+}
+
+function maybeShowTip({ fromLongWait = false, contextPercent = 100 }) {
+  successCommandCount += 1;
+  const randomTrigger = Math.random() < 0.1;
+  const milestoneTrigger = successCommandCount % 5 === 0;
+  const contextTrigger = contextPercent < 40 && contextPercent !== lastTipContextPercent;
+  const longWaitTrigger = fromLongWait;
+  if (!(randomTrigger || milestoneTrigger || contextTrigger || longWaitTrigger)) {
+    return;
+  }
+  lastTipContextPercent = contextPercent;
+  const tip = TIP_MESSAGES[Math.floor(Math.random() * TIP_MESSAGES.length)];
+  const box = boxen(`Tip: ${tip}`, {
+    padding: { top: 0, bottom: 0, left: 1, right: 1 },
+    borderColor: COLORS.peach,
+    borderStyle: "round"
+  });
+  console.log(box);
+  lastTipTime = Date.now();
+}
+
+function startSpinner(detail = "orchestrating", action = "thinking") {
+  const status = startStatusLine(action, detail);
+  if (!status) return null;
+  return () => {
+    status.stop();
+    pendingStatusLine = null;
+  };
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -419,6 +678,7 @@ function runSubAgent(agentId, task) {
   if (!spec) {
     return `Unknown agent '${agentId}'.`;
   }
+  logAction(`Running ${spec.title}`);
   const child = spawnSync(spec.command, [...spec.args, task], {
     cwd: REPO_ROOT,
     env: process.env,
@@ -608,14 +868,14 @@ function delegatedSummary(result) {
   return lines.join("\n\n").trim();
 }
 
-async function printResult(result, promptText) {
+async function printResult(result, promptText, contextPercent = 100, longWait = false) {
   const agentKeys = Object.keys(result.delegated);
   if (agentKeys.length) {
-    console.log(formatMuted(`Delegated context ingested from: ${agentKeys.join(", ")}`));
-    console.log(formatMuted(`Context processed: ${formatPercentage(agentKeys.length, Object.keys(SUB_AGENTS).length)}`));
+    logAction(`Delegated context ingested from: ${agentKeys.join(", ")}`);
+    logAction(`Context processed: ${formatPercentage(agentKeys.length, Object.keys(SUB_AGENTS).length)}`);
   }
   if (result.codex) {
-    console.log(formatMuted("Codex helper output included."));
+    logAction("Codex helper output included.");
   }
 
   let aiMessage;
@@ -647,6 +907,7 @@ async function printResult(result, promptText) {
     persistTodoEntries(tasks, promptText);
     console.log(formatMuted(`Tasks appended to ${path.relative(REPO_ROOT, TODO_PATH)}.`));
   }
+  maybeShowTip({ fromLongWait: longWait, contextPercent });
 }
 
 function printHistoryTranscript(history) {
@@ -656,16 +917,23 @@ function printHistoryTranscript(history) {
   }
   history.forEach((entry, idx) => {
     console.log(pc.bold(`[${idx + 1}] ${entry.role}`));
-    console.log(entry.content);
+    const lines = entry.content.split("\n");
+    if (lines.length > 8) {
+      queueCollapsibleOutput(`Entry ${idx + 1}: ${entry.role}`, lines);
+    } else {
+      console.log(entry.content);
+    }
     console.log();
   });
 }
 
 async function startRepl(options, chainList) {
   brandBanner();
-  console.log(BRAND.muted("Type /help for commands, Ctrl+C to exit.\n"));
+  renderStartupCard(chainList.length ? chainList : ["autodev"]);
+  displayStartupHints();
+  console.log();
 
-  let sessionHistory;
+  let sessionHistory = [];
   try {
     sessionHistory = loadHistory(options.history);
   } catch (error) {
@@ -675,16 +943,18 @@ async function startRepl(options, chainList) {
 
   let currentChain = chainList.length ? [...chainList] : ["autodev"];
   if (!chainList.length) {
-    console.log(pc.dim("Default delegation chain → autodev (change via /chain)."));
+    console.log(TEXT_STYLES.muted("Default delegation chain → autodev (change via /chain)."));
   }
 
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: getPrompt(),
+    prompt: getPromptMarker(),
     historySize: 200
   });
   rl.history = loadCliHistory();
+  updatePromptContext(rl, sessionHistory.length);
+  showPrompt(rl);
 
   const persistAndExit = () => {
     saveCliHistory(rl.history);
@@ -704,7 +974,7 @@ async function startRepl(options, chainList) {
   });
 
   const commandHandlers = {
-    help() {
+    async help() {
       console.log(
         [
           "/help            Show this help message",
@@ -713,44 +983,71 @@ async function startRepl(options, chainList) {
           "/chain <a,b>     Update delegation chain (comma separated IDs)",
           "/history         Print the chat transcript for this session",
           "/clear           Clear conversation history (memory only)",
+          "/expand          Reveal collapsed output",
           "/quit            Exit the session"
         ].join("\n")
       );
     },
-    agents: listAgents,
-    chain(arg) {
+    async agents() {
+      listAgents();
+    },
+    async chain(arg) {
       if (!arg) {
-        console.log(
-          currentChain.length
-            ? `Current chain: ${currentChain.join(", ")}`
-            : "No agents chained. Use /chain dev,qwen to add some."
-        );
+        const choices = Object.entries(SUB_AGENTS).map(([key, spec]) => ({
+          label: `${key} · ${spec.title}`,
+          value: key,
+          checked: currentChain.includes(key)
+        }));
+        const selected = await promptMultiSelect(rl, {
+          title: "Select agents to chain",
+          detail: "Toggle the agents you want to consult next.",
+          choices
+        });
+        currentChain = selected || [];
+        if (currentChain.length) {
+          console.log(formatAccent(`Delegation chain updated → ${currentChain.join(", ")}`));
+        } else {
+          console.log(formatMuted("No agents chained. Use /chain dev,qwen to add some."));
+        }
         return;
       }
       const next = parseChain(arg);
       currentChain = next;
       console.log(
         currentChain.length
-          ? `Delegation chain updated → ${currentChain.join(", ")}`
-          : "Delegation chain cleared."
+          ? formatAccent(`Delegation chain updated → ${currentChain.join(", ")}`)
+          : formatMuted("Delegation chain cleared.")
       );
     },
-    history() {
+    async history() {
       printHistoryTranscript(sessionHistory);
     },
-    clear() {
+    async clear() {
       sessionHistory = [];
-      console.log(pc.dim("Session history cleared."));
+      console.log(formatMuted("Session history cleared."));
     },
-    quit() {
-      persistAndExit();
+    async quit() {
+      const confirmed = await promptYesNo(rl, {
+        title: "Ready to exit?",
+        detail: "Save history and close HeySaladX?",
+        yesLabel: "YES, exit",
+        noLabel: "NO, stay"
+      });
+      if (confirmed) {
+        persistAndExit();
+      }
     },
-    exit() {
-      persistAndExit();
+    async exit() {
+      await commandHandlers.quit();
+    },
+    async expand() {
+      if (!expandNextCollapsedOutput()) {
+        console.log(formatMuted("Nothing to expand right now."));
+      }
     }
   };
 
-  const handleCommand = (raw) => {
+  const handleCommand = async (raw) => {
     const [, cmd = "", rest = ""] = raw.match(/^[:/](\w+)\s*(.*)$/) || [];
     if (!cmd) {
       console.log(pc.red("Unknown command. Type /help for a list of commands."));
@@ -761,23 +1058,28 @@ async function startRepl(options, chainList) {
       console.log(pc.red(`Unknown command '${cmd}'. Type /help for help.`));
       return;
     }
-    handler(rest.trim());
+    await handler(rest.trim());
   };
 
-  rl.prompt();
+  showPrompt(rl);
   rl.on("line", async (line) => {
     const trimmed = line.trim();
     if (!trimmed) {
-      rl.prompt();
+      if (expandNextCollapsedOutput()) {
+        showPrompt(rl);
+        return;
+      }
+      showPrompt(rl);
       return;
     }
     if (trimmed.startsWith("/") || trimmed.startsWith(":")) {
-      handleCommand(trimmed);
-      rl.prompt();
+      await handleCommand(trimmed);
+      showPrompt(rl);
       return;
     }
     renderUserMessage(trimmed);
-    const stopSpinner = startSpinner("Orchestrating with HeySaladX");
+    const startTime = Date.now();
+    const stopSpinner = startSpinner("Orchestrating with HeySaladX", "analyzing");
     let result;
     try {
       result = await runWorkflow(trimmed, options, currentChain, sessionHistory);
@@ -785,22 +1087,25 @@ async function startRepl(options, chainList) {
       stopSpinner?.();
       console.error(pc.red(`Failed to process request: ${error.message}`));
       console.log();
-      rl.prompt();
+      showPrompt(rl);
       return;
     }
     stopSpinner?.();
     console.log();
+    const durationMs = Date.now() - startTime;
+    const contextPercent = getContextPercent(sessionHistory.length);
     try {
-      await printResult(result, trimmed);
+      await printResult(result, trimmed, contextPercent, durationMs >= 10000);
       const assistantMessage = result.summary || delegatedSummary(result) || "(no response)";
       sessionHistory.push({ role: "user", content: trimmed });
       sessionHistory.push({ role: "assistant", content: assistantMessage });
       saveHistory(options.history, sessionHistory);
+      updatePromptContext(rl, sessionHistory.length);
     } catch (error) {
       console.error(pc.red(`Failed to process request: ${error.message}`));
     }
     console.log();
-    rl.prompt();
+    showPrompt(rl);
   });
 
   rl.on("close", () => {
@@ -849,9 +1154,10 @@ async function main() {
   }
 
   renderUserMessage(task);
+  const startTime = Date.now();
   let stopSpinner = null;
   if (!opts.json) {
-    stopSpinner = startSpinner("Orchestrating with HeySaladX");
+    stopSpinner = startSpinner("Orchestrating with HeySaladX", "analyzing");
   }
   let result;
   try {
@@ -871,7 +1177,9 @@ async function main() {
   if (opts.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    await printResult(result, task);
+    const contextPercent = getContextPercent(0);
+    const durationMs = Date.now() - startTime;
+    await printResult(result, task, contextPercent, durationMs >= 10000);
   }
 }
 

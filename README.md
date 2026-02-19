@@ -33,6 +33,8 @@ nano config/services.json  # tweak baseUrl/ports/descriptions
 | `laura-approvals` | internal | HR/logistics approvals, onboarding packets. |
 | `laura-docs` | internal | Document/PDF generation for contracts + SOPs. |
 | `laura-finance` | internal | Finance + payroll adjustments. |
+| `gpt-gateway` | internal | Codex/Claude/Cursor guardrail + caching gateway. |
+| `ota-service` | internal | Firmware + Raspberry Pi rollout coordinator. |
 
 Feel free to add/edit services in that file only—the server bootstraps its MCP resources and tools directly from it, so no code changes are needed when new services come online.
 
@@ -120,6 +122,64 @@ Add to `settings.json`:
 **Cursor**
 
 Open `cursor://anysphere.cursor-deeplink/mcp/install?name=heysalad-mcp&config=eyJ1cmwiOiJodHRwczovL21jcC5oZXlzYWxhZC5hcHAvbWNwIn0=` (or add manually via Settings → MCP).
+
+**ChatGPT Connectors / Developer Mode (OAuth + PKCE)**
+
+1. Enable *Developer mode* under Settings → Connectors.
+2. Click **Add MCP server** and fill:
+   - `Server URL`: `https://mcp.heysalad.app/mcp`
+   - `Authorization URL`: `https://mcp.heysalad.app/oauth/authorize`
+   - `Token URL`: `https://mcp.heysalad.app/oauth/token`
+   - `Client ID`: `heysalad-chatgpt`
+   - `Client secret`: *(leave blank — public PKCE client)*
+3. Save. ChatGPT opens a browser window on `mcp.heysalad.app` asking for a HeySalad MCP API key; paste one from `https://developer.heysalad.app/` (VPN + SSO).
+4. After the OAuth window closes, run `list_services` or `service-health-report` from the connector to confirm access. Tokens refresh automatically with PKCE, so you only enter the API key during the initial grant.
+
+---
+
+#### OAuth configuration knobs
+
+| Env var | Purpose | Default |
+| --- | --- | --- |
+| `MCP_OAUTH_CLIENTS` | JSON array of `{clientId, clientSecret?, redirectOrigins?, displayName?}` to override all clients. | *(undefined → fall back to the entries below)* |
+| `MCP_OAUTH_CLIENT_ID` / `MCP_OAUTH_CLIENT_NAME` | ID + label for the built-in ChatGPT client. | `heysalad-chatgpt` / `ChatGPT` |
+| `MCP_OAUTH_CLIENT_SECRET` | Optional secret for confidential clients. Leave blank for PKCE-only public clients. | none |
+| `MCP_OAUTH_REDIRECT_ORIGINS` | Comma-separated origins allowed to receive auth codes. | `https://chat.openai.com,https://chatgpt.com` |
+| `MCP_OAUTH_CODE_TTL_MS`, `MCP_OAUTH_ACCESS_TOKEN_TTL_MS`, `MCP_OAUTH_REFRESH_TOKEN_TTL_MS` | Lifetimes for auth codes, access tokens, and refresh tokens. | 5 min / 1 h / 7 d |
+| `MCP_OAUTH_ISSUER` | Public base URL used in `/.well-known/oauth-authorization-server`. | `https://mcp.heysalad.app` |
+
+Access tokens issued through OAuth are cached in memory and honored by the existing `requireApiKey` middleware, so the MCP tools continue to see the same `req.mcpIdentity` shape regardless of whether authentication came from a raw API key or an OAuth grant.
+
+---
+
+#### Email Login Codes (SendGrid fallback)
+
+If the Developer Portal is unreachable you can let trusted admins approve OAuth connections by emailing a one-time login code. Configure the following environment variables (examples shown in the user request):
+
+| Variable | Description |
+| --- | --- |
+| `SENDGRID_API_KEY` | SendGrid API token used to deliver the OTP email. |
+| `SENDGRID_FROM_EMAIL` | Sender mailbox (e.g., `noreply@heysalad.io`). |
+| `SENDGRID_FROM_NAME` | Friendly sender name (defaults to `HeySalad MCP`). |
+| `MCP_OTP_ALLOWED_EMAILS` or `ADMIN_EMAILS` | Comma-separated list of inboxes that are allowed to request codes. |
+| `MCP_OTP_TTL_MS` | Code lifetime in milliseconds (default 10 minutes). |
+| `MCP_OTP_RESEND_INTERVAL_MS` | Minimum delay between code sends to the same address (default 60 seconds). |
+| `MCP_OTP_SCOPE` | Scope granted to OTP sessions (`public` or `internal`, default `internal`). |
+
+With those set, the OAuth form renders two options: paste a standard API key or request a login code. Agents enter one of the approved emails, click **Send login code**, then paste the six-digit code sent via SendGrid. The resulting OAuth tokens inherit the configured `MCP_OTP_SCOPE`, so you can keep this path restricted to internal operators.
+
+---
+
+### 4.5 Operate Queues & Jobs from Codex
+
+Two new MCP tools keep Codex (or any MCP client) self-sufficient once it is connected:
+
+| Tool | Purpose | Example |
+| --- | --- | --- |
+| `get_queue_depth` | Reads queue/backlog stats from the service’s `operations.queueDepthPath`. | `mcp call get_queue_depth '{"serviceId":"gpt-gateway","queueName":"priority"}'` |
+| `restart_service_job` | Issues POST/PUT/etc. to `operations.restartJobPath` to nudge a stuck rollout/run. | `mcp call restart_service_job '{"serviceId":"ota-service","jobId":"wave-2024-05-01"}'` |
+
+If a service lacks the baked-in path, pass `pathOverride` (absolute or relative to `baseUrl`). Both tools echo the target URL, status code, and JSON body/error so Codex can reason about the result without additional logging.
 
 ---
 

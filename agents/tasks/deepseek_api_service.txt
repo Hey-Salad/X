@@ -1,0 +1,29 @@
+You are HeySalad Deepseek Coder. Build and document a new Deepseek API microservice and PM2 process so Codex can hit Deepseek locally.
+
+Deliverables:
+1. Implement `agents/deepseek_api_agent.js` (Node ESM). It must:
+   - Start an HTTP server (Express or Fastify) on `process.env.PORT || 5055`.
+   - Expose POST `/chat` that accepts `{ prompt: string, history?: array, includeFiles?: string[], listFiles?: number, searches?: string[] }`.
+   - Use shared helpers for repo context (see below) to gather requested file snippets/listings/search hits, and package them into the Deepseek prompt.
+   - Call the official Deepseek REST endpoint `https://api.deepseek.com/v1/chat/completions` with Bearer `DEEPSEEK_API_KEY`. Default model `deepseek-chat`, override via `DEEPSEEK_MODEL`.
+   - Stream responses if possible; otherwise return final text plus a generated `taskId`.
+   - Persist each conversation to `agents/state/deepseek/<taskId>.json` (prompt/context/response timestamps). Prune to the latest 100 files.
+   - Add a GET `/tasks/:id` that loads the transcript file and returns it (404 if missing).
+   - Add health endpoint `/healthz` that verifies env + file system writable.
+2. Refactor the existing Python CLI `agents/deepseek_coding_agent.py`:
+   - Move shared context helpers (list/search/read) into `agents/lib/deepseek_context.js` (ESM) and `agents/lib/deepseek_context.py` thin wrapper if needed so both Node service and Python CLI reuse logic.
+   - Update the CLI to POST to `http://127.0.0.1:5055/chat` (configurable via `--endpoint` and `DEEPSEEK_AGENT_URL`). Keep current arguments/behavior otherwise.
+3. Add automated tests:
+   - Create `test/deepseek-agent.test.js` using Node's test runner and `nock` to mock Deepseek API. Cover happy path `/chat`, transcript persistence, retention pruning, and `/tasks/:id` responses. Ensure `npm test` passes.
+4. PM2 + scripts:
+  - Add/update `ecosystem.config.cjs` entry named `heysalad-deepseek-coder` running `node agents/deepseek_api_agent.js` with env `PORT=5055`.
+   - Add npm scripts: `"deepseek:agent"`, `"pm2:reload:deepseek"` (calls `pm2 reload heysalad-deepseek-coder`).
+5. Documentation:
+   - Update `agents/README.md` and root `AGENTS.md` with setup steps (env vars, how to start service, curl example, how Python CLI now proxies through local service).
+   - Include PM2 commands and troubleshooting tips (missing API key, transcript permission errors).
+
+Success criteria:
+- `npm test` passes.
+- `curl -H"Authorization: Bearer test" -X POST http://127.0.0.1:5055/healthz` returns OK JSON.
+- `python agents/deepseek_coding_agent.py "Summarize README" --endpoint http://127.0.0.1:5055/chat` works (after server running).
+- PM2 `heysalad-deepseek-coder` process shows `online`.

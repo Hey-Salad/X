@@ -10,10 +10,14 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "NODE_ENV=development node src/server.js",
-    "test": "node --test test/device-generator.test.js",
-    "test:watch": "node --test --watch test/device-generator.test.js",
-    "test:coverage": "node --test --experimental-test-coverage test/device-generator.test.js",
-    "heysaladx": "node agents/heysaladx/bin/heysaladx.js"
+    "demo:check": "node scripts/demo-connectivity.js",
+    "check:sse": "node scripts/check-sse.mjs",
+    "test": "node --test test/*.test.js",
+    "test:watch": "node --test --watch test/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/*.test.js",
+    "heysaladx": "node agents/heysaladx/bin/heysaladx.js",
+    "deepseek:agent": "node agents/deepseek_api_agent.js",
+    "pm2:reload:deepseek": "pm2 reload heysalad-deepseek-coder"
   },
   "keywords": [
     "mcp",
@@ -27,6 +31,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
+    "@sendgrid/mail": "^8.1.6",
     "boxen": "^7.1.1",
     "chalk": "^5.3.0",
     "cli-spinners": "^2.9.0",

@@ -41,25 +41,73 @@ These cover the minimum viable loop for “read → reason → propose” workfl
 
 ---
 
-# DeepSeek Coding Agent (Hugging Face Space)
+# HeySalad DeepSeek API Service (`heysalad-deepseek-coder`)
 
-Lightweight CLI that calls `https://deepseek-ai-deepseek-coder-33b-instruct.hf.space/--replicas/52w5c/` using `gradio_client`.
+Resident Express service that proxies MCP coding tasks to the official DeepSeek API and keeps a rolling transcript archive.
+
+## Runtime options
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DEEPSEEK_API_KEY` | _(required)_ | DeepSeek API token (`sk-…`) with chat scope. |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | Model slug to request (`deepseek-reasoner`, etc.). |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | Override for self-hosted gateways. |
+| `PORT` | `5055` | HTTP port for `/chat`, `/tasks/:id`, `/healthz`. |
+| `DEEPSEEK_RETENTION` | `100` | Max transcript JSON files to keep in `agents/state/deepseek`. |
+
+Start locally:
+
+```bash
+export DEEPSEEK_API_KEY=sk-your-key
+npm run deepseek:agent
+# POST /chat
+curl -s http://127.0.0.1:5055/healthz | jq
+```
+
+PM2 (after exporting the key):
+
+```bash
+pm2 start ecosystem.config.cjs --only heysalad-deepseek-coder
+pm2 logs heysalad-deepseek-coder
+npm run pm2:reload:deepseek  # reload after edits
+```
+
+`POST /chat` accepts:
+
+```jsonc
+{
+  "prompt": "Summarize README",
+  "systemPrompt": "You are the HeySalad Deepseek agent",
+  "history": [{"role":"assistant","content":"…"}],
+  "includeFiles": ["README.md"],
+  "listFiles": 20,
+  "searches": ["Deepseek"],
+  "maxNewTokens": 1024,
+  "topP": 0.9,
+  "topK": 50,
+  "repetitionPenalty": 1.05
+}
+```
+
+The service gathers file snippets/search hits, calls `https://api.deepseek.com/v1/chat/completions`, stores the transcript under `agents/state/deepseek/<taskId>.json`, and returns `{taskId, response, usage, model}`.
+
+---
+
+# DeepSeek Coding CLI (local proxy)
+
+The CLI now targets the local service instead of the public Hugging Face Space.
 
 ```bash
 cd ~/heysalad-mcp/agents
 python deepseek_coding_agent.py "Devise a plan for adding the MCP approval workflow."
 ```
 
-Options:
+Options mirror the API payload:
 
-- `--system` to override the system prompt (default clarifies HeySalad focus)
-- `--include-file path` to inline specific file contents
-- `--list-files N` to append a repository inventory
-- `--search keyword` to include matching lines as context
+- `--endpoint http://127.0.0.1:5055/chat` (defaults via `DEEPSEEK_AGENT_URL`)
+- `--system`, `--include-file`, `--list-files`, `--search`
 - Sampling controls: `--max-new-tokens`, `--top-p`, `--top-k`, `--repetition-penalty`
-- `--history history.json` to stash/replay conversations (JSON list of `{role,content}`)
-
-`gradio_client` must be installed (see `requirements.txt`).
+- `--history history.json` to persist `{role, content}` turns
 
 ---
 
@@ -172,6 +220,28 @@ python deepseek_ocr_agent.py "Describe the text in the photo" --image https://ex
 - `--stream` streams the model output.
 - `--history chat.json` replays prior conversation turns.
 - `--system` overrides the assistant prompt.
+
+---
+
+# Spotify LLM Concierge
+
+Transforms the “now playing” track plus Reddit chatter into fresh recommendations powered by DeepSeek Coder.
+
+```bash
+export SPOTIFY_CLIENT_ID=...
+export SPOTIFY_CLIENT_SECRET=...
+export SPOTIFY_REFRESH_TOKEN=...
+python spotify_llm_agent.py --note "Need upbeat dinner party vibes"
+```
+
+Flags:
+
+- `--access-token` skips the refresh flow if you already have a Spotify token
+- `--subreddits` chooses which Reddit communities to mine (`ifyoulikeblank`, `Music`, `letstalkmusic`, `spotify`, `listentothis` by default)
+- `--history history.json` persists the conversation for follow-ups
+- Standard sampling knobs `--max-new-tokens`, `--top-p`, `--top-k`, `--repetition-penalty`
+
+Ensure the DeepSeek environment variables used by other agents are exported before running this helper.
 
 ---
 

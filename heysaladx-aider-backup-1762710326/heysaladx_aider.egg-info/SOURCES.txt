@@ -1,0 +1,12 @@
+pyproject.toml
+setup.py
+aider/__init__.py
+aider/main.py
+aider/models.py
+aider/ui.py
+heysaladx_aider.egg-info/PKG-INFO
+heysaladx_aider.egg-info/SOURCES.txt
+heysaladx_aider.egg-info/dependency_links.txt
+heysaladx_aider.egg-info/entry_points.txt
+heysaladx_aider.egg-info/requires.txt
+heysaladx_aider.egg-info/top_level.txt

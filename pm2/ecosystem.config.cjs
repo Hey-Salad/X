@@ -1,0 +1,42 @@
+module.exports = {
+  apps: [
+    {
+      name: 'heysalad-github-agent',
+      cwd: '/home/admin/heysalad-mcp',
+      script: 'agents/heysalad_github_agent_service.py',
+      interpreter: '/home/admin/heysalad-mcp/agents/.venv/bin/python',
+      args: '--port 8700',
+      env: {
+        GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+        HF_TOKEN: process.env.HF_TOKEN,
+        HEYSALAD_AGENT_REPO: '/home/admin/worktrees',
+        GIT_SSH_COMMAND: 'ssh -F /home/admin/.ssh/config',
+        GIT_AUTHOR_NAME: 'chilu18',
+        GIT_AUTHOR_EMAIL: 'chilumba@agriweiss.com',
+      },
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      max_memory_restart: '1G',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+    {
+      name: 'spotify-llm-agent',
+      cwd: '/home/admin/heysalad-mcp',
+      script: 'agents/spotify_llm_agent.py',
+      interpreter: '/home/admin/heysalad-mcp/agents/.venv/bin/python',
+      args: '--history /home/admin/.cache/spotify_agent/history.json',
+      env: {
+        SPOTIFY_CLIENT_ID: process.env.SPOTIFY_CLIENT_ID,
+        SPOTIFY_CLIENT_SECRET: process.env.SPOTIFY_CLIENT_SECRET,
+        SPOTIFY_REFRESH_TOKEN: process.env.SPOTIFY_REFRESH_TOKEN,
+        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+        HF_TOKEN: process.env.HF_TOKEN,
+      },
+      autorestart: false,
+      cron_restart: '0 * * * *',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+  ],
+};

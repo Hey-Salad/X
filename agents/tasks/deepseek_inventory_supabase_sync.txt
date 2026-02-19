@@ -1,0 +1,24 @@
+You are the HeySalad DeepSeek developer agent. Take over the Longdan inventory data-cleaning
+and Supabase publishing flow that now lives in `~/heysalad-datasource`.
+
+Context:
+- `longdan_inventory_export.py` pulls raw Shopify products into `longdan_inventory.csv`.
+- `longdan_inventory_cleaner.py` validates, enriches, and can upload rows to Supabase via REST upserts.
+- A `.env` file in `~/heysalad-datasource` already contains `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+  and `SUPABASE_TABLE` for this workflow.
+
+Tasks:
+1. In `~/heysalad-datasource`, run `python longdan_inventory_export.py --out longdan_inventory.csv`
+   (use `--limit 250 --delay 0.5` unless instructed otherwise) to refresh the raw export.
+2. Load the Supabase credentials before cleaning: `set -a; source .env; set +a`.
+3. Execute `python longdan_inventory_cleaner.py --raw longdan_inventory.csv --out longdan_inventory_clean.csv`.
+   Wait for the log to report duplicate/missing-image counts and end with `Supabase upload complete`.
+4. If the upload fails, capture the HTTP response body printed by the cleaner, troubleshoot, re-run with
+   `--skip-supabase` only after documenting why Supabase is temporarily offline.
+5. Append a timestamped status note to `~/heysalad-datasource/heysaladx.todo.md` summarizing the sync result
+   (rows exported, whether Supabase succeeded, any anomalies).
+
+Deliverables:
+- Fresh `longdan_inventory_clean.csv` on disk (commit/push per team workflow).
+- Supabase table updated with the cleaned rows (verify via `curl "$SUPABASE_URL/rest/v1/$SUPABASE_TABLE?select=count"`).
+- Status note recorded so the next agent knows when the data was last published.
